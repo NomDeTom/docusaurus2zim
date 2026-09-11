@@ -1,0 +1,20 @@
+{
+  "$comment": "Site configuration for docusaurus2zim. Values only; the flag declarations live in the tool's offliner-definition.json.",
+  "defaults": {
+    "name": "meshtastic-docs",
+    "title": "Meshtastic Documentation",
+    "description": "Meshtastic documentation, offline",
+    "language": "eng",
+    "creator": "Meshtastic",
+    "publisher": "Meshtastic",
+    "tags": "_category:documentation;meshtastic",
+    "base_url": "",
+    "only_current_version": true,
+    "exclude": "",
+    "prune_prefixes": "design/,documents/",
+    "index_selector": "main",
+    "long_description": "Offline build of the Meshtastic documentation site: current (2.8) docs only, with unreferenced design assets and PDF datasheets omitted.",
+    "mirror_hosts": "flasher.meshtastic.org",
+    "asset_prefixes": "/img/,/documents/,/design/"
+  }
+}

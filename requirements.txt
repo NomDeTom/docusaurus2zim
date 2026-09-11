@@ -1,0 +1,2 @@
+# Pinned packaging deps for scripts/zim/package.py (see scripts/zim/Dockerfile).
+zimscraperlib==5.4.1

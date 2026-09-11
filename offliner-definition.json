@@ -1,0 +1,140 @@
+{
+  "offliner_id": "docusaurus",
+  "stdOutput": true,
+  "stdStats": true,
+  "flags": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "title": "ZIM Name",
+      "description": "Identifier and filename stem. Library convention is <project>_<lang>_<flavour>",
+      "pattern": "^([a-z0-9\\-\\.]+_)([a-z\\-]+_)([a-z0-9\\-\\.]+)$"
+    },
+    "title": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM Title",
+      "description": "Title for the ZIM, up to 30 characters",
+      "minGraphemes": 1,
+      "maxGraphemes": 30
+    },
+    "description": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM Description",
+      "description": "Description (up to 80 chars) for ZIM",
+      "minGraphemes": 1,
+      "maxGraphemes": 80
+    },
+    "long_description": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM Long Description",
+      "description": "Long description (up to 4000 chars) for ZIM",
+      "minGraphemes": 1,
+      "maxGraphemes": 4000
+    },
+    "language": {
+      "type": "string",
+      "required": false,
+      "title": "Language",
+      "description": "ISO-639-3 (3 chars) language code of content",
+      "pattern": "^[a-z]{3}(,[a-z]{3})*$",
+      "customValidator": "language_code"
+    },
+    "creator": {
+      "type": "string",
+      "required": false,
+      "title": "Content Creator",
+      "description": "Name of content creator"
+    },
+    "publisher": {
+      "type": "string",
+      "required": false,
+      "title": "Publisher",
+      "description": "Custom publisher name"
+    },
+    "tags": {
+      "type": "string",
+      "required": false,
+      "title": "ZIM Tags",
+      "description": "List of semi-colon-separated Tags for the ZIM file"
+    },
+    "base_url": {
+      "type": "string",
+      "required": false,
+      "title": "Serving prefix",
+      "description": "URL prefix the book is mounted under; passed to the Docusaurus build as DOCS_BASE_URL"
+    },
+    "only_current_version": {
+      "type": "boolean",
+      "required": false,
+      "title": "Current docs only",
+      "description": "Exclude archived documentation versions from the build"
+    },
+    "exclude": {
+      "type": "string",
+      "required": false,
+      "title": "Exclusions",
+      "description": "Comma-separated glob patterns; matching built files are never added to the ZIM"
+    },
+    "prune_prefixes": {
+      "type": "string",
+      "required": false,
+      "title": "Prune prefixes",
+      "description": "Comma-separated built subtrees reduced to only their referenced files"
+    },
+    "index_selector": {
+      "type": "string",
+      "required": false,
+      "title": "Index selector",
+      "description": "CSS selector whose text is indexed for each HTML page; empty indexes the whole page"
+    },
+    "mirror_hosts": {
+      "type": "string",
+      "required": false,
+      "title": "Mirror hosts",
+      "description": "Comma-separated hosts whose images are copied into the ZIM"
+    },
+    "asset_prefixes": {
+      "type": "string",
+      "required": false,
+      "title": "Asset prefixes",
+      "description": "Comma-separated root-absolute asset prefixes re-pointed at baseUrl"
+    }
+  },
+  "zimMetadata": [
+    {
+      "metadata": "Name",
+      "flag": "name"
+    },
+    {
+      "metadata": "Title",
+      "flag": "title"
+    },
+    {
+      "metadata": "Description",
+      "flag": "description"
+    },
+    {
+      "metadata": "LongDescription",
+      "flag": "long_description"
+    },
+    {
+      "metadata": "Creator",
+      "flag": "creator"
+    },
+    {
+      "metadata": "Publisher",
+      "flag": "publisher"
+    },
+    {
+      "metadata": "Language",
+      "flag": "language"
+    },
+    {
+      "metadata": "Tags",
+      "flag": "tags"
+    }
+  ]
+}
