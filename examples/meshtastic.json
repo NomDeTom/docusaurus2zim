@@ -11,10 +11,11 @@
     "base_url": "",
     "only_current_version": true,
     "exclude": "",
-    "prune_prefixes": "design/,documents/",
+    "prune_prefixes": "img/,design/,documents/",
     "index_selector": "main",
-    "long_description": "Offline build of the Meshtastic documentation site: current (2.8) docs only, with unreferenced design assets and PDF datasheets omitted.",
+    "long_description": "Offline build of the Meshtastic documentation site: current (2.8) docs only, with unreferenced images, design assets and PDF datasheets omitted.",
     "mirror_hosts": "flasher.meshtastic.org",
-    "asset_prefixes": "/img/,/documents/,/design/"
+    "asset_prefixes": "/img/,/documents/,/design/",
+    "docusaurus_overrides": {}
   }
 }

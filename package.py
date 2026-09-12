@@ -13,13 +13,20 @@ from __future__ import annotations
 import argparse
 import datetime
 import fnmatch
+import hashlib
+import io
 import json
 import pathlib
+import struct
 import sys
 import urllib.parse
+import zlib
 
 from bs4 import BeautifulSoup
 from zimscraperlib.filesystem import get_file_mimetype
+from zimscraperlib.image.conversion import convert_image, convert_svg2png
+from zimscraperlib.image.probing import format_for
+from zimscraperlib.image.transformation import resize_image
 from zimscraperlib.types import get_mime_for_name
 from zimscraperlib.zim.creator import Creator
 from zimscraperlib.zim.indexing import IndexData, get_pdf_index_data
@@ -40,6 +47,7 @@ from zimscraperlib.zim.metadata import (
 
 DEFAULT_CONFIG = pathlib.Path("docusaurus2zim.json")
 TEXT_SCAN_SUFFIXES = (".html", ".js", ".css", ".json", ".xml", ".webmanifest")
+RENDERED_SUFFIXES = (".html", ".css")
 
 
 def load_defaults(config: pathlib.Path) -> dict:
@@ -57,7 +65,7 @@ class PageItem(StaticItem):
     the item, before a subclass __init__ has had a chance to set anything up.
     """
 
-    def __init__(self, root: pathlib.Path, filepath: pathlib.Path, selector: str):
+    def __init__(self, root: pathlib.Path, filepath: pathlib.Path, selector: str, path: str):
         mimetype = get_file_mimetype(filepath)
         # Most web files are plain text to libmagic; trust the extension for those.
         if mimetype.startswith("text/"):
@@ -65,7 +73,7 @@ class PageItem(StaticItem):
         title, index_data = index_for(filepath, mimetype, selector)
         super().__init__(
             filepath=filepath,
-            path=filepath.relative_to(root).as_posix(),
+            path=path,
             title=title,
             mimetype=mimetype,
             index_data=index_data,
@@ -94,15 +102,24 @@ def referenced_paths(root: pathlib.Path, prefixes: list[str]) -> set[str]:
     """Relative paths under `prefixes` that something outside them mentions."""
     if not prefixes:
         return set()
-    blob: list[str] = []
+    rendered: list[str] = []
+    scripted: list[str] = []
+    twins: set[str] = set()
     for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in TEXT_SCAN_SUFFIXES:
+        if not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
         if any(rel.startswith(p) for p in prefixes):
             continue
-        blob.append(path.read_text(encoding="utf-8", errors="replace"))
-    haystack = "\n".join(blob)
+        # Docusaurus copies every imported image to assets/ under a hashed name, so
+        # a static original may survive only as a mention in a page's raw source.
+        twins.add(hashlib.sha1(path.read_bytes()).hexdigest())
+        if path.suffix.lower() in RENDERED_SUFFIXES:
+            rendered.append(path.read_text(encoding="utf-8", errors="replace"))
+        elif path.suffix.lower() in TEXT_SCAN_SUFFIXES:
+            scripted.append(path.read_text(encoding="utf-8", errors="replace"))
+    rendered_blob = "\n".join(rendered)
+    scripted_blob = "\n".join(scripted)
 
     keep: set[str] = set()
     for path in root.rglob("*"):
@@ -111,9 +128,89 @@ def referenced_paths(root: pathlib.Path, prefixes: list[str]) -> set[str]:
         rel = path.relative_to(root).as_posix()
         if not any(rel.startswith(p) for p in prefixes):
             continue
-        if rel in haystack or urllib.parse.quote(rel) in haystack:
+        forms = (rel, urllib.parse.quote(rel))
+        if any(f in rendered_blob for f in forms):
             keep.add(rel)
+        elif any(f in scripted_blob for f in forms):
+            # A hashed twin already serves this file; the mention is markdown source.
+            if hashlib.sha1(path.read_bytes()).hexdigest() not in twins:
+                keep.add(rel)
     return keep
+
+
+ILLUSTRATION_SIZE = 48
+
+
+def favicon_path(root: pathlib.Path, main_path: str) -> pathlib.Path | None:
+    """The built file behind the main page's <link rel=icon>, if it is in the tree."""
+    page = root / main_path
+    if not page.is_file():
+        return None
+    soup = BeautifulSoup(page.read_text(encoding="utf-8", errors="replace"), "html.parser")
+    link = soup.find("link", rel=lambda r: r and "icon" in r)
+    href = link.get("href") if link else None
+    if not href or "://" in href:
+        return None
+    parts = urllib.parse.unquote(href.split("?")[0]).strip("/").split("/")
+    # The href carries the site's baseUrl; peel leading segments until it resolves.
+    for i in range(len(parts)):
+        candidate = root.joinpath(*parts[i:])
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def png_48(src: pathlib.Path) -> bytes:
+    """`src` (SVG, PNG, ICO, ...) rendered as a 48x48 PNG."""
+    out = io.BytesIO()
+    if src.suffix.lower() == ".svg":
+        convert_svg2png(src, out, ILLUSTRATION_SIZE, ILLUSTRATION_SIZE)
+        return out.getvalue()
+    if format_for(src, from_suffix=False) == "PNG":
+        from PIL import Image
+
+        with Image.open(src) as img:
+            if img.size == (ILLUSTRATION_SIZE, ILLUSTRATION_SIZE):
+                return src.read_bytes()
+    png = io.BytesIO()
+    convert_image(src, png, fmt="PNG")
+    resize_image(png, ILLUSTRATION_SIZE, ILLUSTRATION_SIZE, dst=out, method="cover")
+    return out.getvalue()
+
+
+def flat_png_48(rgb: tuple[int, int, int] = (0x67, 0xEA, 0x94)) -> bytes:
+    """Last resort: a solid 48x48 square, so the ZIM still has a valid illustration."""
+    w = h = ILLUSTRATION_SIZE
+    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        body = tag + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+def illustration_bytes(root: pathlib.Path, explicit: pathlib.Path, main_path: str) -> bytes:
+    """A site-supplied PNG wins; else the site's favicon, rendered to 48x48; else flat."""
+    if explicit.is_file():
+        print(f"==> illustration: {explicit.relative_to(root).as_posix()}")
+        return explicit.read_bytes()
+    icon = favicon_path(root, main_path)
+    if icon:
+        try:
+            data = png_48(icon)
+            print(f"==> illustration: favicon {icon.relative_to(root).as_posix()}")
+            return data
+        except Exception as exc:  # noqa: BLE001 - any rasteriser failure means fall back
+            print(f"==> illustration: favicon {icon.name} unusable ({exc}); using placeholder")
+    else:
+        print("==> illustration: no favicon found; using placeholder")
+    return flat_png_48()
 
 
 def main() -> int:
@@ -143,7 +240,7 @@ def main() -> int:
     if prefixes:
         print(f"==> prune: {len(keep)} referenced files under {','.join(prefixes)}")
 
-    illustration = root / args.illustration
+    illustration = illustration_bytes(root, root / args.illustration, args.main_path)
     metadata = StandardMetadataList(
         Name=NameMetadata(args.name),
         Language=LanguageMetadata(args.language),
@@ -151,7 +248,7 @@ def main() -> int:
         Creator=CreatorMetadata(args.creator),
         Publisher=PublisherMetadata(args.publisher),
         Date=DateMetadata(datetime.date.today()),
-        Illustration_48x48_at_1=DefaultIllustrationMetadata(illustration.read_bytes()),
+        Illustration_48x48_at_1=DefaultIllustrationMetadata(illustration),
         Description=DescriptionMetadata(args.description),
         LongDescription=(
             LongDescriptionMetadata(args.long_description)
@@ -185,8 +282,12 @@ def main() -> int:
                 skipped_pruned += 1
                 skipped_bytes += path.stat().st_size
                 continue
-            creator.add_item(PageItem(root, path, args.index_selector))
-            added_paths.add(rel)
+            # A page lives at its route ("docs/intro/"), never at ".../index.html":
+            # the client router only knows the route, and a 302 away from it would
+            # hydrate into the site's own not-found page.
+            zim_path = rel[: -len("index.html")] if rel.endswith("/index.html") else rel
+            creator.add_item(PageItem(root, path, args.index_selector, zim_path))
+            added_paths.add(zim_path)
             added += 1
             # trailingSlash decorates asset links too, so a page can point at
             # "file.pdf/". Nothing resolves that in a ZIM, so redirect it to the file.

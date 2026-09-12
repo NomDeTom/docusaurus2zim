@@ -25,8 +25,9 @@ the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the
 - **baseUrl.** A reader mounts a book under a URL prefix, and a Docusaurus site is a single-page
   app: rewriting built HTML is not enough, because the router re-renders every link from its own
   absolute routes once it hydrates. The site is built with `baseUrl` set to the serving prefix.
-- **Entries, not directories.** A ZIM resolves entries, so every `page/` needs a redirect to
-  `page/index.html`.
+- **Pages live at their route.** `page/index.html` is stored as the entry `page/`, with the
+  file name redirecting to it. The client router only knows the route: a redirect the other way
+  round is a 302 to a URL it cannot match, and the page hydrates into the site's own not-found.
 - **Both slash forms.** Raw HTML in MDX and in config strings bypasses `trailingSlash`, so pages
   are also reachable without the trailing slash — and, in the other direction, `trailingSlash`
   decorates *asset* links too, so `file.pdf/` redirects to `file.pdf`. A live site has a server
@@ -36,7 +37,11 @@ the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the
 - **Stray root-absolute assets.** Raw paths inside React components miss `baseUrl` and are
   re-pointed.
 - **Pruning and exclusion.** Unreferenced files under chosen prefixes are never added; glob
-  patterns drop anything else. Nothing is deleted from the build directory.
+  patterns drop anything else. Nothing is deleted from the build directory. A static image that
+  Docusaurus has already copied to `assets/` under a hashed name counts as unreferenced when its
+  only mention is in a page's raw source, so `img/` can be pruned without losing anything.
+- **Cover.** `zim-illustration.png` in the build directory if the site ships one; otherwise the
+  favicon the main page declares, rendered to 48x48 (SVG, PNG, ICO); otherwise a flat square.
 - **PDF full text**, via `zimscraperlib`'s pymupdf integration.
 - **Verification.** `--verify` serves the result and probes every internal reference on a sample
   of pages, failing on any break.
@@ -85,18 +90,34 @@ by a farm later.
     "exclude": "",
     "asset_prefixes": "/img/",
     "mirror_hosts": "",
-    "only_current_version": true
+    "only_current_version": true,
+    "docusaurus_overrides": {}
   }
 }
 ```
 
 Every key is also a command-line flag, which takes precedence.
 
-`only_current_version` sets `DOCS_ONLY_CURRENT` for the build; the site's
-`docusaurus.config.js` decides what to do with it, e.g.:
+### Overriding the site's Docusaurus config
 
-```js
-...(process.env.DOCS_ONLY_CURRENT ? { onlyIncludeVersions: ["current"] } : {}),
+**The site repo needs no changes.** Overrides are applied by a wrapper config generated at build
+time and passed to `docusaurus build --config`. The wrapper `require`s the real config and mutates
+the object — Docusaurus loads configs through its own transpiler, and that covers the nested
+require, so this works even for a config that mixes CJS and ESM and cannot be loaded by plain
+Node. No textual patching, and nothing left behind: the wrapper is removed on exit.
+
+`only_current_version: true` drops archived documentation versions, setting
+`onlyIncludeVersions: ["current"]` on whichever preset or plugin carries the docs options, and
+trimming `versions` to match — leaving config for an excluded version behind trips Docusaurus
+validation.
+
+For anything else, `docusaurus_overrides` takes dotted paths into the config object:
+
+```json
+"docusaurus_overrides": {
+  "themeConfig.algolia": null,
+  "themeConfig.footer.copyright": ""
+}
 ```
 
 `prune_prefixes` and `exclude` answer different questions. Pruning asks *"is anything
