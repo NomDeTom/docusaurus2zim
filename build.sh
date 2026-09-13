@@ -285,6 +285,64 @@ print("==> re-pointed stray asset paths in %d files" % rewrites)
 STRAY
 fi
 
+# ------------------------------------------------- absolute self-links
+# Docs imported from other repos link back to the site by its full URL, which
+# leaves the book. Anything that resolves inside the build is made relative; the
+# rest is listed, since a self-link with no page behind it is stale on the live
+# site too. The site URL is read from the canonical link, so nothing to configure.
+python3 - "$OUT_DIR" "$BASE_URL" "$WELCOME" <<'SELF'
+import os, re, sys
+from urllib.parse import unquote
+
+out_dir, base_url, welcome = sys.argv[1], sys.argv[2], sys.argv[3]
+base = "/" + base_url.strip("/") + "/" if base_url.strip("/") else "/"
+home = open(os.path.join(out_dir, welcome), encoding="utf-8", errors="replace").read()
+m = re.search(r'rel=["\']?canonical["\']?\s+href=["\']?(https?://[^"\'\s>]+)', home)
+site = m.group(1)[: -len(base)] if m and m.group(1).endswith(base) else None
+if not site:
+    print("==> self-links: no canonical URL on the welcome page, skipping")
+    sys.exit(0)
+
+def resolves(path):
+    """A route ("docs/x/"), a file, or a route without its slash."""
+    rel = unquote(path.split("#")[0].split("?")[0]).strip("/")
+    if not rel:
+        return True
+    full = os.path.join(out_dir, rel)
+    return os.path.isfile(full) or os.path.isfile(os.path.join(full, "index.html"))
+
+host = re.sub(r"^https?://", "", site)
+link = re.compile(
+    r'(?<=[="\'(])https?://' + re.escape(host)
+    + r'(?:(' + re.escape(base) + r'|/)([^"\'\s>)]*))?(?=["\'\s>)])'
+)
+rewritten, files = 0, 0
+missing = {}
+for d, _, names in os.walk(out_dir):
+    for n in names:
+        if not n.endswith((".html", ".js", ".css", ".xml")):
+            continue
+        path = os.path.join(d, n)
+        text = open(path, encoding="utf-8", errors="replace").read()
+        def sub(mm):
+            global rewritten
+            rest = mm.group(2) or ""
+            if not resolves(rest):
+                missing.setdefault(rest, os.path.relpath(path, out_dir))
+                return mm.group(0)
+            rewritten += 1
+            return base + rest
+        new = link.sub(sub, text)
+        if new != text:
+            open(path, "w", encoding="utf-8").write(new)
+            files += 1
+print(f"==> self-links: {rewritten} made relative in {files} files ({site})")
+if missing:
+    print(f"==> self-links: {len(missing)} left absolute, no page in the build:")
+    for target, where in sorted(missing.items())[:20]:
+        print(f"      /{target}   <- {where}")
+SELF
+
 # ------------------------------------------------------------- redirects
 REDIRECTS="$OUT_DIR/.zim-redirects.tsv"
 # Optional site-supplied cover; package.py falls back to the favicon, then a flat square.

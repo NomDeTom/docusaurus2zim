@@ -36,6 +36,9 @@ the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the
   including the bare directory prefix, because components build image URLs from it at runtime.
 - **Stray root-absolute assets.** Raw paths inside React components miss `baseUrl` and are
   re-pointed.
+- **Absolute self-links.** Pages imported from other repos link back to the site by its full
+  URL. Those that resolve inside the build are made relative; the rest are listed, since a
+  self-link with no page behind it is stale on the live site too.
 - **Pruning and exclusion.** Unreferenced files under chosen prefixes are never added; glob
   patterns drop anything else. Nothing is deleted from the build directory. A static image that
   Docusaurus has already copied to `assets/` under a hashed name counts as unreferenced when its
