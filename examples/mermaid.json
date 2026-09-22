@@ -1,0 +1,21 @@
+{
+  "$comment": "Mermaid syntax docs (VitePress, not Docusaurus). Build: see examples/README.md. Packaged with package.py directly; build.sh's Docusaurus wrapper does not apply.",
+  "defaults": {
+    "name": "mermaid-docs",
+    "title": "Mermaid Documentation",
+    "description": "Mermaid diagram syntax and configuration reference, offline",
+    "language": "eng",
+    "creator": "Mermaid",
+    "publisher": "Mermaid",
+    "tags": "_category:documentation;mermaid",
+    "base_url": "",
+    "only_current_version": true,
+    "exclude": "",
+    "prune_prefixes": "",
+    "index_selector": "main",
+    "long_description": "Offline build of mermaid.js.org for mermaid 11.16: every diagram type's syntax page, configuration, and the setup API reference. Built with VitePress under the Kiwix book path so the live editor's docs links resolve into it.",
+    "mirror_hosts": "",
+    "asset_prefixes": "",
+    "docusaurus_overrides": {}
+  }
+}
