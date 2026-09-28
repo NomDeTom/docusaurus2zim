@@ -54,6 +54,7 @@ BASE_URL=""
 SERVE=0
 VERIFY=0
 SKIP_BUILD=0
+NO_DOCKER=0
 SERVE_PORT=8081
 MIRROR_HOSTS="$(cfg mirror_hosts)"
 ASSET_PREFIXES="$(cfg asset_prefixes)"
@@ -75,6 +76,9 @@ Options:
   --zim-dir DIR        where the .zim is written (default: $ZIM_DIR)
   --heap MB            node heap cap for the build (default: $HEAP)
   --skip-build         reuse an existing --out-dir
+  --no-docker          package with this machine's Python instead of the image; needs
+                       requirements.txt installed (\$DOCUSAURUS2ZIM_PYTHON picks the
+                       interpreter) and libmagic + libcairo. Not with --serve/--verify.
   --serve              serve the result with kiwix-serve on :$SERVE_PORT
   --verify             probe every internal link on a sample of pages
   --mirror-hosts LIST  comma-separated hosts whose images are copied into the ZIM
@@ -95,6 +99,7 @@ while [[ $# -gt 0 ]]; do
     --zim-dir) ZIM_DIR="$2"; shift 2 ;;
     --heap) HEAP="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --no-docker) NO_DOCKER=1; shift ;;
     --serve) SERVE=1; shift ;;
     --verify) VERIFY=1; shift ;;
     --mirror-hosts) MIRROR_HOSTS="$2"; shift 2 ;;
@@ -113,11 +118,19 @@ CONFIG_ABS="$(cd "$(dirname "$CONFIG")" && pwd)/$(basename "$CONFIG")"
 : "${BASE_URL:=/content/$NAME/}"
 [[ "$BASE_URL" == */ ]] || BASE_URL="$BASE_URL/"
 
-command -v docker >/dev/null || { echo "docker is required" >&2; exit 1; }
-docker info >/dev/null 2>&1 || {
-  echo "docker daemon unreachable (on WSL, enable integration for this distro)" >&2
-  exit 1
-}
+if [[ $NO_DOCKER -eq 1 ]]; then
+  PYTHON="${DOCUSAURUS2ZIM_PYTHON:-python3}"
+  [[ $SERVE -eq 0 && $VERIFY -eq 0 ]] ||
+    { echo "--serve/--verify run kiwix-serve in Docker; drop them with --no-docker" >&2; exit 2; }
+  "$PYTHON" -c "import zimscraperlib" 2>/dev/null ||
+    { echo "$PYTHON has no zimscraperlib: pip install -r $(dirname "$0")/requirements.txt" >&2; exit 1; }
+else
+  command -v docker >/dev/null || { echo "docker is required (or --no-docker)" >&2; exit 1; }
+  docker info >/dev/null 2>&1 || {
+    echo "docker daemon unreachable (on WSL, enable integration for this distro, or --no-docker)" >&2
+    exit 1
+  }
+fi
 
 # ---------------------------------------------------------------- build
 # docusaurus.config.js takes its baseUrl from DOCS_BASE_URL, so a subpath build needs
@@ -377,12 +390,20 @@ mkdir -p "$ZIM_DIR"
 ZIM_FILE="$ZIM_DIR/$NAME.zim"
 rm -f "$ZIM_FILE"
 echo "==> packaging $ZIM_FILE"
-docker run --rm --user "$(id -u):$(id -g)" \
-  -v "$ROOT:/work" -v "$CONFIG_ABS:/config.json:ro" -w /work "$PACKAGE_IMAGE" \
-  --config /config.json \
-  --build-dir "/work/$OUT_DIR" \
-  --output "/work/$ZIM_FILE" \
-  --redirects "/work/$REDIRECTS" \
+# The same package.py either way; only where it runs, and so how paths are spelled, differs.
+if [[ $NO_DOCKER -eq 1 ]]; then
+  PACKAGE=("$PYTHON" "$(cd "$(dirname "$0")" && pwd)/package.py" --config "$CONFIG_ABS")
+  W="$ROOT"
+else
+  PACKAGE=(docker run --rm --user "$(id -u):$(id -g)"
+    -v "$ROOT:/work" -v "$CONFIG_ABS:/config.json:ro" -w /work "$PACKAGE_IMAGE"
+    --config /config.json)
+  W=/work
+fi
+"${PACKAGE[@]}" \
+  --build-dir "$W/$OUT_DIR" \
+  --output "$W/$ZIM_FILE" \
+  --redirects "$W/$REDIRECTS" \
   --illustration "$ILLUSTRATION_REL" \
   --main-path "$WELCOME" \
   --name "$NAME" \

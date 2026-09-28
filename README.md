@@ -63,6 +63,7 @@ build.sh                build and package
 build.sh --verify       also serve and probe every internal link
 build.sh --skip-build   repackage an existing out-dir
 build.sh --serve        serve the result on :8081
+build.sh --no-docker    package with a local Python instead of the container
 ```
 
 The config need not live in the site repo — point at one anywhere:
@@ -132,6 +133,13 @@ merely unlinked — a glob that removes a file some page links to will strand th
 
 Docker, and Node for the Docusaurus build itself. The packaging step runs entirely in the
 container, so no local Python, `libmagic` or `libzim` is needed.
+
+Without Docker, `--no-docker` runs the same `package.py` locally. It needs Python 3.14 with
+`requirements.txt` installed, plus `libmagic` and `libcairo`. A conda or micromamba env gives
+all three; point `DOCUSAURUS2ZIM_PYTHON` at its interpreter. `--serve` and `--verify` still
+run Kiwix in Docker, so they are refused with `--no-docker`. They also assume the book is
+mounted at the root (`/content/<name>/`), so a build with a different `--base-url` has to be
+checked on the server it was built for.
 
 ## Status
 
