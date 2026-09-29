@@ -1,4 +1,7 @@
-Example site configurations. Copy one into your site repo as `docusaurus2zim.json`.
+Example site configurations. Copy one into your site repo as `docusaurus2zim.json`, or leave
+it here and point `DOCUSAURUS2ZIM_CONFIG` at it. Both leave `base_url` empty, which builds for
+`kiwix-serve` at the root; see "The base URL" in the main README before building for a server
+that mounts Kiwix under a prefix.
 
 ## mermaid.json — a VitePress site, not Docusaurus
 
@@ -13,7 +16,7 @@ npx prettier --write ./src/docs/config/setup
 rm -rf src/vitepress && npx tsx scripts/docs.cli.mts --vitepress
 pnpm --filter ./src/vitepress install --no-frozen-lockfile --ignore-scripts
 cd src/vitepress && NODE_OPTIONS=--max-old-space-size=3500 npx vitepress build --base /wiki/content/mermaid-docs/
-python3 package.py --config examples/mermaid.json --build-dir src/vitepress/.vitepress/dist --output mermaid-docs.zim
+python3 package.py --config examples/mermaid.json   # Python 3.14 with requirements.txt, e.g. the micromamba env in the main README --build-dir src/vitepress/.vitepress/dist --output mermaid-docs.zim
 ```
 
 Result: 654 pages, 101 MB build → 11 MB ZIM, 2157 items. Served by kiwix-serve, every

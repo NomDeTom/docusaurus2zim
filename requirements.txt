@@ -1,2 +1,2 @@
-# Pinned packaging deps for scripts/zim/package.py (see scripts/zim/Dockerfile).
+# Pinned packaging deps for package.py (see Dockerfile). zimscraperlib 5.4 needs Python 3.14.
 zimscraperlib==5.4.1

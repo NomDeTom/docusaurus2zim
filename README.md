@@ -25,6 +25,7 @@ the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the
 - **baseUrl.** A reader mounts a book under a URL prefix, and a Docusaurus site is a single-page
   app: rewriting built HTML is not enough, because the router re-renders every link from its own
   absolute routes once it hydrates. The site is built with `baseUrl` set to the serving prefix.
+  See [The base URL](#the-base-url) below: the book then works at that prefix only.
 - **Pages live at their route.** `page/index.html` is stored as the entry `page/`, with the
   file name redirecting to it. The client router only knows the route: a redirect the other way
   round is a 302 to a URL it cannot match, and the page hydrates into the site's own not-found.
@@ -51,7 +52,11 @@ the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the
 
 ## Usage
 
-From the root of a Docusaurus site containing a `docusaurus2zim.json`:
+From the root of a Docusaurus site containing a `docusaurus2zim.json`, with the site's own
+dependencies installed and current (`pnpm install`, `npm ci` or `yarn`, whichever the site
+uses). A `node_modules` older than the site's `package.json` fails inside the Docusaurus
+build with a "Cannot find module" error for a plugin, which looks like a docusaurus2zim
+problem but is not.
 
 ```sh
 docker build -t docusaurus2zim:latest /path/to/docusaurus2zim
@@ -60,11 +65,16 @@ docker build -t docusaurus2zim:latest /path/to/docusaurus2zim
 
 ```
 build.sh                build and package
-build.sh --verify       also serve and probe every internal link
+build.sh --verify       also serve and probe every internal link on a sample of pages
 build.sh --skip-build   repackage an existing out-dir
 build.sh --serve        serve the result on :8081
 build.sh --no-docker    package with a local Python instead of the container
+build.sh --help         every option, with its current default
 ```
+
+The other options are `--name`, `--title`, `--base-url`, `--out-dir`, `--zim-dir`,
+`--heap`, `--mirror-hosts`, `--asset-prefixes` and `--verify-ignore`. `--help` works
+anywhere, even outside a site repo.
 
 The config need not live in the site repo — point at one anywhere:
 
@@ -72,6 +82,36 @@ The config need not live in the site repo — point at one anywhere:
 DOCUSAURUS2ZIM_CONFIG=/path/to/docusaurus2zim/examples/meshtastic.json \
   /path/to/docusaurus2zim/build.sh --verify
 ```
+
+The build goes to `build-zim/` and the book to `zim-out/<name>.zim`, both in the site repo.
+Add them to its `.gitignore`, or pass `--out-dir` and `--zim-dir` to put them elsewhere.
+
+| Environment variable | Default | Meaning |
+|---|---|---|
+| `DOCUSAURUS2ZIM_CONFIG` | `docusaurus2zim.json` | the site config to use |
+| `DOCUSAURUS2ZIM_IMAGE` | `docusaurus2zim:latest` | the packaging image |
+| `DOCUSAURUS2ZIM_PYTHON` | `python3` | the interpreter for `--no-docker` |
+| `ZIM_BUILD_HEAP` | `1800` | Node heap cap for the Docusaurus build, in MB (same as `--heap`) |
+
+## The base URL
+
+Docusaurus bakes `baseUrl` into the build, and its router checks it once the page hydrates,
+so a book is built for **one** mount point and works there only. Served anywhere else, every
+page shows "Your Docusaurus site did not load properly". The link checks cannot catch this:
+every link still answers 200, and the failure only appears once the JavaScript runs.
+
+The default is `/content/<name>/`, which is where `kiwix-serve` puts a book when it is
+mounted at the root of its server. A server that mounts Kiwix under a prefix needs the
+prefix included:
+
+| Served by | Build with |
+|---|---|
+| `kiwix-serve` at the root (and `--serve`/`--verify`) | the default, `/content/<name>/` |
+| `kiwix-serve --urlRootLocation /wiki` (the Irate-Box hub) | `--base-url /wiki/content/<name>/` |
+
+Set it with `--base-url`, or with `base_url` in the config. The example configs leave it
+empty, which means the default. Ignore the path the banner suggests: Docusaurus makes it by
+adding a slash to the current address.
 
 ## Configuration
 
@@ -89,6 +129,7 @@ by a farm later.
     "language": "eng",
     "creator": "Example",
     "publisher": "Example",
+    "base_url": "",
     "index_selector": "main",
     "prune_prefixes": "design/,documents/",
     "exclude": "",
@@ -131,20 +172,39 @@ merely unlinked — a glob that removes a file some page links to will strand th
 
 ## Requirements
 
-Docker, and Node for the Docusaurus build itself. The packaging step runs entirely in the
-container, so no local Python, `libmagic` or `libzim` is needed.
+Node, for the Docusaurus build itself, and one of the two ways to package it:
 
-Without Docker, `--no-docker` runs the same `package.py` locally. It needs Python 3.14 with
-`requirements.txt` installed, plus `libmagic` and `libcairo`. A conda or micromamba env gives
-all three; point `DOCUSAURUS2ZIM_PYTHON` at its interpreter. `--serve` and `--verify` still
-run Kiwix in Docker, so they are refused with `--no-docker`. They also assume the book is
-mounted at the root (`/content/<name>/`), so a build with a different `--base-url` has to be
-checked on the server it was built for.
+- **Docker** (the default). The packaging step runs in the image, so no local Python,
+  `libmagic` or `libzim` is needed. `--serve` and `--verify` also need Docker, for
+  `kiwix-serve`.
+- **A local Python, with `--no-docker`.** The pinned `zimscraperlib` needs Python 3.14, plus
+  `libmagic` and `libcairo`. A micromamba (or conda) env provides all three:
+
+  ```sh
+  micromamba create -n zim -c conda-forge python=3.14 cairo libmagic pip
+  ~/micromamba/envs/zim/bin/pip install -r /path/to/docusaurus2zim/requirements.txt
+  DOCUSAURUS2ZIM_PYTHON=~/micromamba/envs/zim/bin/python \
+    /path/to/docusaurus2zim/build.sh --no-docker
+  ```
+
+## Known limitations
+
+- **`--serve` and `--verify` ignore `--base-url`.** They start `kiwix-serve` at the root and
+  check `/content/<name>/`, so a book built for another mount has to be checked on the server
+  it was built for.
+- **`--verify` checks links, not hydration.** It reads `href` and `src` in the HTML the
+  server returns, on the main page and 12 others. A wrong base URL, or a link that only
+  exists once the JavaScript runs, gets through.
+- **Stray root-absolute assets are only fixed under `asset_prefixes`.** A raw path under any
+  other prefix is left pointing outside the book, and is not reported.
+- `--serve` and `--verify` are refused with `--no-docker`.
 
 ## Status
 
-Extracted from a working pipeline for the Meshtastic documentation site, where it produces a
-98 MB book from a 257 MB build with zero broken references. Interfaces may still move.
+Extracted from a working pipeline for the Meshtastic documentation site. The 2026-09-29 build
+of the current docs (2.8 only) is a 58 MB book of 1,520 items and 1,942 redirects, with
+172.7 MB of unreferenced files pruned. It was packaged with `--no-docker` and checked in a
+browser under `/wiki` on the Irate-Box hub. Interfaces may still move.
 
 ## License
 

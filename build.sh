@@ -5,30 +5,39 @@
 # prefix. Two things follow, and this script handles both:
 #
 #   1. the site is built with baseUrl set to that prefix, so the server-rendered HTML
-#      and the hydrated React router both emit paths the reader can resolve;
-#   2. every page gets a redirect from "page/" to "page/index.html", because the
-#      reader will not resolve a directory to its index.
+#      and the hydrated React router both emit paths the reader can resolve. The
+#      book then works at that prefix only (default /content/<name>/: kiwix-serve
+#      at the root of its server);
+#   2. every page is stored at its route, "page/", and both "page/index.html" and
+#      "page" redirect there, because the reader has no server to normalise them.
 #
-# Requires Docker: the packaging image (built from this repo's Dockerfile) and
-# kiwix-serve for --serve/--verify.
+# Packaging runs in Docker (the image built from this repo's Dockerfile), or with a
+# local Python under --no-docker. --serve/--verify always need Docker, for kiwix-serve.
 #
 #   docusaurus2zim/build.sh                   build, package
 #   docusaurus2zim/build.sh --serve           also serve it on :8081
 #   docusaurus2zim/build.sh --skip-build      repackage the existing out-dir
+#   docusaurus2zim/build.sh --no-docker       package without Docker
 #
-# Run from the root of a Docusaurus site that has a docusaurus2zim.json.
+# Run from the root of a Docusaurus site that has a docusaurus2zim.json, or point
+# DOCUSAURUS2ZIM_CONFIG at one.
 #
 set -euo pipefail
 
-# Defaults live in the offliner definition, which is also the Zimfarm contract, so
-# there is one declarative source for them rather than two that drift.
-# The config may live outside the site repo, so it is mounted into the packaging
-# container separately rather than assumed to be under $ROOT.
+# Values come from the site's config, under "defaults"; the flags themselves are
+# declared in offliner-definition.json, the Zimfarm offliner contract. The config may
+# live outside the site repo, so the Docker packaging step mounts it separately
+# rather than assuming it is under $ROOT.
 CONFIG="${DOCUSAURUS2ZIM_CONFIG:-docusaurus2zim.json}"
 cfg() {
+  # No config yet reads as empty, so --help works anywhere; a real run stops at the
+  # config check below.
   python3 -c "
 import json, sys
-v = json.load(open(sys.argv[1]))['defaults'].get(sys.argv[2], '')
+try:
+    v = json.load(open(sys.argv[1]))['defaults'].get(sys.argv[2], '')
+except FileNotFoundError:
+    v = ''
 print(v if isinstance(v, str) else json.dumps(v))
 " "$CONFIG" "$1"
 }
@@ -65,7 +74,8 @@ PACKAGE_IMAGE="${DOCUSAURUS2ZIM_IMAGE:-docusaurus2zim:latest}"
 KIWIX_IMAGE="ghcr.io/kiwix/kiwix-serve"
 
 usage() {
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  # The header comment, however long it grows: line 2 up to the first non-comment line.
+  awk 'NR == 1 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0"
   cat <<EOF
 
 Options:

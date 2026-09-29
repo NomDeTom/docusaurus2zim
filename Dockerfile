@@ -1,4 +1,4 @@
-# Packaging environment for build-zim.sh, pinned so a ZIM built today is reproducible.
+# Packaging environment for build.sh (package.py), pinned so a ZIM built today is reproducible.
 # System deps are zimscraperlib's declared list (its README) minus the ones only its
 # download/video/GIF helpers need: libmagic1 for type detection, libcairo2 because
 # cairosvg is imported eagerly for SVG-to-PNG.
