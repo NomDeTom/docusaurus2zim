@@ -22,10 +22,12 @@ the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the
 
 ## What it handles
 
-- **baseUrl.** A reader mounts a book under a URL prefix, and a Docusaurus site is a single-page
-  app: rewriting built HTML is not enough, because the router re-renders every link from its own
-  absolute routes once it hydrates. The site is built with `baseUrl` set to the serving prefix.
-  See [The base URL](#the-base-url) below: the book then works at that prefix only.
+- **Relative paths, so a book works at any mount point.** A reader mounts a book under a URL
+  prefix that differs between Kiwix at a server's root, Kiwix under a prefix, and the desktop
+  and mobile readers. openZIM books cope by linking relatively, and so do these, which takes
+  more work for a Docusaurus site than for static HTML. See [The base URL](#the-base-url).
+- **Analytics removed.** Vercel, Google gtag, Google Analytics and Google Tag Manager plugins
+  are dropped from the build: they cannot reach anything offline and only leave 404s.
 - **Pages live at their route.** `page/index.html` is stored as the entry `page/`, with the
   file name redirecting to it. The client router only knows the route: a redirect the other way
   round is a 302 to a URL it cannot match, and the page hydrates into the site's own not-found.
@@ -95,23 +97,31 @@ Add them to its `.gitignore`, or pass `--out-dir` and `--zim-dir` to put them el
 
 ## The base URL
 
-Docusaurus bakes `baseUrl` into the build, and its router checks it once the page hydrates,
-so a book is built for **one** mount point and works there only. Served anywhere else, every
-page shows "Your Docusaurus site did not load properly". The link checks cannot catch this:
-every link still answers 200, and the failure only appears once the JavaScript runs.
+Docusaurus bakes `baseUrl` into the build in three places. It is in the pre-rendered HTML.
+It is in the router's routes and the links compiled into React components, which the router
+compares with the full page address once the page hydrates. And it is in webpack's path for
+loading the rest of the scripts. A plain Docusaurus build therefore works at one mount point
+only; anywhere else, every page shows "Your Docusaurus site did not load properly".
 
-The default is `/content/<name>/`, which is where `kiwix-serve` puts a book when it is
-mounted at the root of its server. A server that mounts Kiwix under a prefix needs the
-prefix included:
+**By default the book is relative, and works at any mount point.** The site is built with
+a placeholder `baseUrl`, and `relativize.mjs` replaces it everywhere:
 
-| Served by | Build with |
-|---|---|
-| `kiwix-serve` at the root (and `--serve`/`--verify`) | the default, `/content/<name>/` |
-| `kiwix-serve --urlRootLocation /wiki` (the Irate-Box hub) | `--base-url /wiki/content/<name>/` |
+- in HTML, CSS, feeds and other files, with a path relative to that file (`../../`);
+- in JavaScript, where a relative path cannot work, because the routes are used from every
+  page: each string holding the placeholder is rewritten, with a real parser (some are object
+  keys), to fill in the mount point at load time;
+- on every page, a first script finds that mount point by resolving the page's relative path
+  against its own address.
 
-Set it with `--base-url`, or with `base_url` in the config. The example configs leave it
-empty, which means the default. Ignore the path the banner suggests: Docusaurus makes it by
-adding a slash to the current address.
+Canonical and sitemap URLs get the site's real root back. Any file still holding the
+placeholder is listed, and the build stops there. Docusaurus's own base-URL banner is turned
+off, since the book is always served under a mount point it was not built for. The
+Meshtastic docs, built once, work under both `/content/<name>/` (kiwix-serve at a server's
+root) and `/wiki/content/<name>/` (the Irate-Box hub).
+
+**`--base-url` builds for one mount point instead**, the old behaviour, if you want it. The
+book then works at that prefix only. If you do, ignore the path the banner suggests:
+Docusaurus makes it by adding a slash to the current address.
 
 ## Configuration
 
@@ -189,14 +199,18 @@ Node, for the Docusaurus build itself, and one of the two ways to package it:
 
 ## Known limitations
 
-- **`--serve` and `--verify` ignore `--base-url`.** They start `kiwix-serve` at the root and
-  check `/content/<name>/`, so a book built for another mount has to be checked on the server
-  it was built for.
 - **`--verify` checks links, not hydration.** It reads `href` and `src` in the HTML the
-  server returns, on the main page and 12 others. A wrong base URL, or a link that only
-  exists once the JavaScript runs, gets through.
-- **Stray root-absolute assets are only fixed under `asset_prefixes`.** A raw path under any
-  other prefix is left pointing outside the book, and is not reported.
+  server returns, on the main page and 12 others. A link that only exists once the
+  JavaScript runs gets through.
+- **`--serve` and `--verify` check `/content/<name>/` only.** That is fine for a relative book,
+  which works there as it does anywhere. A `--base-url` book has to be checked on the server
+  it was built for.
+- **Stray root-absolute assets are only fixed under `asset_prefixes`.** These are raw paths
+  written into React components without the base URL, so they never held the placeholder
+  either. A path under any other prefix is left pointing outside the book, and is not
+  reported.
+- **JavaScript outside the page**, such as a service worker, has no page address to find the
+  mount point from, and falls back to `/`. Docusaurus sites rarely ship one.
 - `--serve` and `--verify` are refused with `--no-docker`.
 
 ## Status
