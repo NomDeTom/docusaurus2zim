@@ -1,0 +1,81 @@
+name: CI
+
+# 1. Publish the packaging image (Dockerfile) as ghcr.io/nomdetom/docusaurus2zim, the
+#    action's fallback: tags latest (main), the branch name, and sha-<commit>.
+# 2. Self-test the action (action.yml) in each mode by packaging a two-page site.
+# Weekly as well, so the python:3.14-slim base picks up fixes and a broken upstream release
+# of anything pip installs shows up here before it shows up in a docs build.
+on:
+  push:
+    branches: [main, action]
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ghcr.io/nomdetom/docusaurus2zim:sha-${{ steps.sha.outputs.short }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: sha
+        run: echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/nomdetom/docusaurus2zim
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=sha,format=short
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  selftest:
+    needs: image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pip, image, auto]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: d2z
+        uses: ./
+        with:
+          mode: ${{ matrix.mode }}
+          image: ${{ needs.image.outputs.ref }}
+      - name: Package a two-page site
+        run: |
+          mkdir -p site/page
+          printf '<!doctype html><html><head><title>Home</title></head><body><main><h1>Home</h1><a href="page/">page</a></main></body></html>\n' > site/index.html
+          printf '<!doctype html><html><head><title>Page</title></head><body><main><h1>Page</h1><p>offline</p></main></body></html>\n' > site/page/index.html
+          jq '.defaults.name = "selftest" | .defaults.title = "Self-test"' "$D2Z_HOME/examples/mermaid.json" > selftest.json
+          "$D2Z_PYTHON" "$D2Z_HOME/package.py" --config selftest.json --build-dir site --output out/selftest.zim
+          test -s out/selftest.zim
+          echo "packaged with ${{ steps.d2z.outputs.mode }}: $(du -h out/selftest.zim | cut -f1)"
+      - name: The mode asked for is the mode used
+        if: matrix.mode != 'auto'
+        run: test "${{ steps.d2z.outputs.mode }}" = "${{ matrix.mode }}"

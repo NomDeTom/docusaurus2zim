@@ -1,0 +1,75 @@
+name: docusaurus2zim
+description: >-
+  Sets up docusaurus2zim's packaging environment (Python 3.14, zimscraperlib, libmagic,
+  libcairo) with pip, falling back to the pre-built ghcr.io/nomdetom/docusaurus2zim image if
+  the install fails (a PyPI or apt outage, a broken release upstream).
+author: NomDeTom
+
+inputs:
+  mode:
+    description: auto (pip, else the image), pip, or image
+    default: auto
+  image:
+    description: Packaging image for image mode, and the auto fallback
+    default: ghcr.io/nomdetom/docusaurus2zim:latest
+
+outputs:
+  mode:
+    description: pip or image, whichever is in use
+    value: ${{ steps.pick.outputs.mode }}
+
+# After this step, either way:
+#   D2Z_HOME               this repo (build.sh, package.py, relativize.mjs, examples/)
+#   D2Z_PYTHON             a python with zimscraperlib: run "$D2Z_PYTHON" "$D2Z_HOME/package.py"
+#   DOCUSAURUS2ZIM_PYTHON  the same, for build.sh --no-docker
+runs:
+  using: composite
+  steps:
+    - id: py
+      if: inputs.mode != 'image'
+      continue-on-error: true
+      uses: actions/setup-python@v7
+      with:
+        python-version: '3.14'
+
+    - id: pip
+      if: inputs.mode != 'image' && steps.py.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y -q --no-install-recommends libmagic1 libcairo2
+        python -m pip install -q -r "$GITHUB_ACTION_PATH/requirements.txt"
+        python -c "import zimscraperlib"
+
+    - id: pick
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        IMAGE: ${{ inputs.image }}
+        PIP_OK: ${{ steps.pip.outcome == 'success' }}
+      run: |
+        home="$GITHUB_ACTION_PATH"
+        if [ "$MODE" != image ] && [ "$PIP_OK" = true ]; then
+          mode=pip
+          py="$(command -v python)"
+        else
+          if [ "$MODE" = pip ]; then echo "::error::pip setup failed, and mode is pip"; exit 1; fi
+          if [ "$MODE" = auto ]; then echo "::warning::pip setup failed; falling back to $IMAGE"; fi
+          docker pull -q "$IMAGE"
+          mode=image
+          # python inside the image, with the workspace, this action and temp at their own
+          # paths, so callers pass the same paths in either mode.
+          py="$RUNNER_TEMP/d2z-python"
+          printf '%s\n' '#!/bin/sh' \
+            "exec docker run --rm -i --user \"\$(id -u):\$(id -g)\" -v \"$GITHUB_WORKSPACE:$GITHUB_WORKSPACE\" -v \"$home:$home:ro\" -v \"$RUNNER_TEMP:$RUNNER_TEMP\" -w \"\$PWD\" --entrypoint python \"$IMAGE\" \"\$@\"" \
+            > "$py"
+          chmod +x "$py"
+        fi
+        {
+          echo "D2Z_HOME=$home"
+          echo "D2Z_PYTHON=$py"
+          echo "DOCUSAURUS2ZIM_PYTHON=$py"
+        } >> "$GITHUB_ENV"
+        echo "mode=$mode" >> "$GITHUB_OUTPUT"
+        echo "docusaurus2zim: packaging with $mode ($py)"
