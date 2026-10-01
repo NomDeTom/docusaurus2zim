@@ -61,8 +61,15 @@ runs:
           # python inside the image, with the workspace, this action and temp at their own
           # paths, so callers pass the same paths in either mode.
           py="$RUNNER_TEMP/d2z-python"
+          mounts="-v \"$GITHUB_WORKSPACE:$GITHUB_WORKSPACE\" -v \"$RUNNER_TEMP:$RUNNER_TEMP\""
+          # Used from another repo the action lives under _actions/ and needs its own mount;
+          # used as ./ it is the workspace, and Docker rejects a duplicate mount point.
+          case "$home/" in
+            "$GITHUB_WORKSPACE"/*) ;;
+            *) mounts="$mounts -v \"$home:$home:ro\"" ;;
+          esac
           printf '%s\n' '#!/bin/sh' \
-            "exec docker run --rm -i --user \"\$(id -u):\$(id -g)\" -v \"$GITHUB_WORKSPACE:$GITHUB_WORKSPACE\" -v \"$home:$home:ro\" -v \"$RUNNER_TEMP:$RUNNER_TEMP\" -w \"\$PWD\" --entrypoint python \"$IMAGE\" \"\$@\"" \
+            "exec docker run --rm -i --user \"\$(id -u):\$(id -g)\" $mounts -w \"\$PWD\" --entrypoint python \"$IMAGE\" \"\$@\"" \
             > "$py"
           chmod +x "$py"
         fi
