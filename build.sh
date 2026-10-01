@@ -121,6 +121,10 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
+# The site build is read inside the Docker mount of the site root, so it must live there.
+case "$OUT_DIR" in
+  /* | ../* | ..) echo "--out-dir must be a path inside the site root (got $OUT_DIR)" >&2; exit 2 ;;
+esac
 
 # Operates on the site repo, which is the working directory - not on this tool's
 # own location, which may be anywhere.
@@ -431,7 +435,12 @@ print(f"==> {len(rows)} redirects written")
 PY
 
 # ---------------------------------------------------------------- package
+# --zim-dir may be relative to the site root (the default) or absolute, anywhere: it is
+# resolved here, and mounted on its own in Docker, where only the site root is otherwise
+# visible. (Joining it onto the work dir, as before, put an absolute one at
+# <site>/<absolute path> and reported success.)
 mkdir -p "$ZIM_DIR"
+ZIM_DIR="$(cd "$ZIM_DIR" && pwd)"
 ZIM_FILE="$ZIM_DIR/$NAME.zim"
 rm -f "$ZIM_FILE"
 echo "==> packaging $ZIM_FILE"
@@ -439,15 +448,17 @@ echo "==> packaging $ZIM_FILE"
 if [[ $NO_DOCKER -eq 1 ]]; then
   PACKAGE=("$PYTHON" "$(cd "$(dirname "$0")" && pwd)/package.py" --config "$CONFIG_ABS")
   W="$ROOT"
+  OUTPUT="$ZIM_FILE"
 else
   PACKAGE=(docker run --rm --user "$(id -u):$(id -g)"
-    -v "$ROOT:/work" -v "$CONFIG_ABS:/config.json:ro" -w /work "$PACKAGE_IMAGE"
+    -v "$ROOT:/work" -v "$ZIM_DIR:/out" -v "$CONFIG_ABS:/config.json:ro" -w /work "$PACKAGE_IMAGE"
     --config /config.json)
   W=/work
+  OUTPUT="/out/$NAME.zim"
 fi
 "${PACKAGE[@]}" \
   --build-dir "$W/$OUT_DIR" \
-  --output "$W/$ZIM_FILE" \
+  --output "$OUTPUT" \
   --redirects "$W/$REDIRECTS" \
   --illustration "$ILLUSTRATION_REL" \
   --main-path "$WELCOME" \
@@ -468,7 +479,7 @@ echo "==> $(du -h "$ZIM_FILE" | cut -f1)  $ZIM_FILE"
 if [[ $SERVE -eq 1 || $VERIFY -eq 1 ]]; then
   docker rm -f "zim-$NAME" >/dev/null 2>&1 || true
   docker run -d --name "zim-$NAME" -p "$SERVE_PORT:8080" \
-    -v "$ROOT/$ZIM_DIR:/data" "$KIWIX_IMAGE" "$NAME.zim" >/dev/null
+    -v "$ZIM_DIR:/data" "$KIWIX_IMAGE" "$NAME.zim" >/dev/null
   sleep 5
   echo "==> serving http://localhost:$SERVE_PORT/content/$NAME/$WELCOME"
 fi
