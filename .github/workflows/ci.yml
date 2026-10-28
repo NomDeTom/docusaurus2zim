@@ -1,13 +1,18 @@
 name: CI
 
 # 1. Publish the packaging image (Dockerfile) as ghcr.io/nomdetom/docusaurus2zim, the
-#    action's fallback: tags latest (main), the branch name, and sha-<commit>.
+#    action's fallback: tags latest (main), the branch name, sha-<commit>, and on a release
+#    tag vX.Y.Z also X.Y.Z, X.Y and X (the action's default image is the major one).
 # 2. Self-test the action (action.yml) in each mode by packaging a two-page site.
+# 3. Build a fresh Docusaurus site with the action (build: true), kept inside the repository
+#    (uses: ./d2z), in each mode; and on main and weekly, as another repository uses it
+#    (uses: NomDeTom/docusaurus2zim@main).
 # Weekly as well, so the python:3.14-slim base picks up fixes and a broken upstream release
 # of anything pip installs shows up here before it shows up in a docs build.
 on:
   push:
-    branches: [main, action]
+    branches: ['**']
+    tags: ['v*']
   schedule:
     - cron: '17 4 * * 1'
   workflow_dispatch:
@@ -38,6 +43,9 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
       - uses: docker/setup-buildx-action@v4
       - uses: docker/build-push-action@v7
         with:
@@ -79,3 +87,83 @@ jobs:
       - name: The mode asked for is the mode used
         if: matrix.mode != 'auto'
         run: test "${{ steps.d2z.outputs.mode }}" = "${{ matrix.mode }}"
+
+  # The whole build, as a site repository runs it: Node and the site's dependencies installed,
+  # then the action with build: true. The site's config leaves out the optional keys (tags,
+  # long_description), as a minimal one does. Here docusaurus2zim is kept inside the
+  # repository (a submodule or a copy, used as ./d2z).
+  build:
+    needs: image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pip, image]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: d2z
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: A fresh Docusaurus site
+        run: |
+          npx -y create-docusaurus@3 site classic --javascript --skip-install
+          cd site
+          npm install --no-audit --no-fund
+          cat > docusaurus2zim.json <<'EOF'
+          {"defaults": {"name": "selftest-docs", "title": "Self-test", "description": "A fresh Docusaurus site, offline",
+            "language": "eng", "creator": "docusaurus2zim", "publisher": "docusaurus2zim", "index_selector": "main"}}
+          EOF
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: d2z
+        uses: ./d2z
+        with:
+          build: 'true'
+          site-dir: site
+          mode: ${{ matrix.mode }}
+          image: ${{ needs.image.outputs.ref }}
+      - name: The book is there, made the way asked
+        run: |
+          test -s "${{ steps.d2z.outputs.zim }}"
+          test "${{ steps.d2z.outputs.mode }}" = "${{ matrix.mode }}"
+          echo "${{ steps.d2z.outputs.zim }}: $(du -h "${{ steps.d2z.outputs.zim }}" | cut -f1), with ${{ matrix.mode }}"
+
+  # The same, as another repository uses the action: from GitHub, at main. A workflow cannot
+  # name the commit under test in uses:, so this checks main itself, after a merge and weekly.
+  external:
+    if: github.ref == 'refs/heads/main'
+    needs: image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [pip, image]
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: A fresh Docusaurus site
+        run: |
+          npx -y create-docusaurus@3 site classic --javascript --skip-install
+          cd site
+          npm install --no-audit --no-fund
+          cat > docusaurus2zim.json <<'EOF'
+          {"defaults": {"name": "selftest-docs", "title": "Self-test", "description": "A fresh Docusaurus site, offline",
+            "language": "eng", "creator": "docusaurus2zim", "publisher": "docusaurus2zim", "index_selector": "main"}}
+          EOF
+      - id: d2z
+        uses: NomDeTom/docusaurus2zim@main
+        with:
+          build: 'true'
+          site-dir: site
+          mode: ${{ matrix.mode }}
+          image: ${{ needs.image.outputs.ref }}
+      - name: The book is there, made the way asked
+        run: |
+          test -s "${{ steps.d2z.outputs.zim }}"
+          test "${{ steps.d2z.outputs.mode }}" = "${{ matrix.mode }}"

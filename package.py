@@ -57,6 +57,16 @@ def load_defaults(config: pathlib.Path) -> dict:
     return json.loads(config.read_text(encoding="utf-8")).get("defaults", {})
 
 
+def declared_flags() -> list:
+    """The flags offliner-definition.json declares, beside this file. Every one is an option whether or not the
+    site's config gives it a value, so build.sh can pass them all to a config that leaves some out."""
+    definition = pathlib.Path(__file__).with_name("offliner-definition.json")
+    try:
+        return list(json.loads(definition.read_text(encoding="utf-8"))["flags"])
+    except (OSError, ValueError, KeyError):
+        return []
+
+
 class PageItem(StaticItem):
     """A built file, indexed by its main content rather than its whole body.
 
@@ -225,8 +235,8 @@ def main() -> int:
     parser.add_argument("--redirects", type=pathlib.Path)
     parser.add_argument("--illustration", default="zim-illustration.png")
     parser.add_argument("--main-path", default="index.html")
-    for flag, default in defaults.items():
-        parser.add_argument(f"--{flag.replace('_', '-')}", default=default)
+    for flag in dict.fromkeys([*declared_flags(), *defaults]):
+        parser.add_argument(f"--{flag.replace('_', '-')}", default=defaults.get(flag, ""))
     args = parser.parse_args()
 
     root: pathlib.Path = args.build_dir
@@ -252,7 +262,7 @@ def main() -> int:
         Description=DescriptionMetadata(args.description),
         LongDescription=(
             LongDescriptionMetadata(args.long_description)
-            if getattr(args, "long_description", "")
+            if args.long_description
             else None
         ),
         Tags=TagsMetadata(args.tags) if args.tags else None,

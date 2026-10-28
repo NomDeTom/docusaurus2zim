@@ -11,6 +11,6 @@ RUN apt-get update \
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-COPY package.py /opt/zim/package.py
+COPY package.py offliner-definition.json /opt/zim/
 WORKDIR /work
 ENTRYPOINT ["python", "/opt/zim/package.py"]
