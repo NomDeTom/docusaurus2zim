@@ -474,6 +474,8 @@ fi
 
 
 echo "==> $(du -h "$ZIM_FILE" | cut -f1)  $ZIM_FILE"
+# Run as a GitHub Actions step (action.yml with build: true), the book's path is the step's output.
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then echo "zim=$ZIM_FILE" >> "$GITHUB_OUTPUT"; fi
 
 # ---------------------------------------------------------------- serve
 if [[ $SERVE -eq 1 || $VERIFY -eq 1 ]]; then

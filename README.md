@@ -95,6 +95,99 @@ Add them to its `.gitignore`, or pass `--out-dir` and `--zim-dir` to put them el
 | `DOCUSAURUS2ZIM_PYTHON` | `python3` | the interpreter for `--no-docker` |
 | `ZIM_BUILD_HEAP` | `1800` | Node heap cap for the Docusaurus build, in MB (same as `--heap`) |
 
+## GitHub Actions
+
+`action.yml` makes this a GitHub Action. With `build: true` it builds the site and packages
+it, and gives the book's path as the `zim` output. Without it, it only sets up the packaging
+environment for a `build.sh` or `package.py` step of your own (see "Setup only" below).
+
+Either way, the site needs Node and its own dependencies installed first, and a
+`docusaurus2zim.json` (see [Configuration](#configuration)). It runs on Ubuntu runners:
+packaging uses `apt-get` with `sudo`, or else Docker.
+
+### From GitHub (another repository's action)
+
+The usual way: the site repository refers to this one.
+
+```yaml
+name: Offline book
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  zim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - id: zim
+        uses: NomDeTom/docusaurus2zim@v1
+        with:
+          build: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-book
+          path: ${{ steps.zim.outputs.zim }}
+```
+
+`@v1` follows the newest 1.x release; pin a full version (`@v1.0.0`) or a commit to hold one.
+
+### Kept inside the site's repository
+
+docusaurus2zim can also live in the site's own repository, as a git submodule or a copy
+(say at `tools/docusaurus2zim`), and be used from there by its path. Check out the submodule
+with the site:
+
+```yaml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - id: zim
+        uses: ./tools/docusaurus2zim
+        with:
+          build: true
+```
+
+The inputs and output are the same either way.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| `build` | `false` | `true` builds and packages the site; `false` only sets up the environment |
+| `site-dir` | `.` | the site's root, relative to the workspace |
+| `config` | `docusaurus2zim.json` | the site config, relative to `site-dir` |
+| `name`, `title` | from the config | the ZIM's name and title |
+| `base-url` | none | build for one serving prefix only, instead of a relative book |
+| `out-dir` | `build-zim` | the site build directory, relative to `site-dir` |
+| `zim-dir` | `zim-out` | where the `.zim` is written, relative to `site-dir`; keep it inside the workspace |
+| `heap` | `1800` | Node heap cap for the build, in MB |
+| `skip-build` | `false` | `true` packages an existing `out-dir` |
+| `mode` | `auto` | the packaging environment: `pip`, the `image`, or `auto` (pip, else the image) |
+| `image` | `ghcr.io/nomdetom/docusaurus2zim:1` | the packaging image, for `image` and the `auto` fallback |
+
+Outputs: `zim`, the book's path (with `build: true`), and `mode`, `pip` or `image`.
+
+### Setup only
+
+With `build` left `false`, the action sets `D2Z_HOME` (this repository), `D2Z_PYTHON` and
+`DOCUSAURUS2ZIM_PYTHON` (a Python with zimscraperlib, the image's in image mode) for your own
+steps:
+
+```yaml
+      - uses: NomDeTom/docusaurus2zim@v1
+      - run: '"$D2Z_HOME/build.sh" --no-docker --zim-dir out'
+```
+
 ## The base URL
 
 Docusaurus bakes `baseUrl` into the build in three places. It is in the pre-rendered HTML.
@@ -151,7 +244,8 @@ by a farm later.
 }
 ```
 
-Every key is also a command-line flag, which takes precedence.
+Every key is also a command-line flag, which takes precedence. A site needs `name`, `title`,
+`description`, `language`, `creator` and `publisher`; the others may be left out.
 
 ### Overriding the site's Docusaurus config
 
@@ -218,7 +312,9 @@ Node, for the Docusaurus build itself, and one of the two ways to package it:
 Extracted from a working pipeline for the Meshtastic documentation site. The 2026-09-29 build
 of the current docs (2.8 only) is a 58 MB book of 1,520 items and 1,942 redirects, with
 172.7 MB of unreferenced files pruned. It was packaged with `--no-docker` and checked in a
-browser under `/wiki` on the Irate-Box hub. Interfaces may still move.
+browser under `/wiki` on the Irate-Box hub. Releases follow semantic versioning: a change to
+the action's inputs or outputs, or to the config's keys, that breaks a working setup is a new
+major version.
 
 ## License
 

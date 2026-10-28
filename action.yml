@@ -1,24 +1,59 @@
 name: docusaurus2zim
-description: >-
-  Sets up docusaurus2zim's packaging environment (Python 3.14, zimscraperlib, libmagic,
-  libcairo) with pip, falling back to the pre-built ghcr.io/nomdetom/docusaurus2zim image if
-  the install fails (a PyPI or apt outage, a broken release upstream).
+description: Build a Docusaurus site into a Kiwix ZIM for offline reading, with search over the page text only.
 author: NomDeTom
+branding:
+  icon: book-open
+  color: blue
 
 inputs:
+  build:
+    description: >-
+      true: build the site and package it (needs Node and the site's dependencies installed).
+      false: only set up the packaging environment, for your own build.sh or package.py step.
+    default: 'false'
+  site-dir:
+    description: The Docusaurus site's root, relative to the workspace
+    default: .
+  config:
+    description: The docusaurus2zim.json to use, relative to site-dir
+    default: docusaurus2zim.json
+  name:
+    description: ZIM name, also the book id in the reader URL (default from the config)
+    default: ''
+  title:
+    description: ZIM title (default from the config)
+    default: ''
+  base-url:
+    description: Build for this one serving prefix only (default none, a relative book that works at any mount)
+    default: ''
+  out-dir:
+    description: Site build directory, relative to site-dir
+    default: build-zim
+  zim-dir:
+    description: Where the .zim is written, relative to site-dir (keep it inside the workspace)
+    default: zim-out
+  heap:
+    description: Node heap cap for the Docusaurus build, in MB
+    default: '1800'
+  skip-build:
+    description: true to package an existing out-dir instead of building
+    default: 'false'
   mode:
-    description: auto (pip, else the image), pip, or image
+    description: 'How to get the packaging environment: auto (pip, else the image), pip, or image'
     default: auto
   image:
     description: Packaging image for image mode, and the auto fallback
-    default: ghcr.io/nomdetom/docusaurus2zim:latest
+    default: ghcr.io/nomdetom/docusaurus2zim:1
 
 outputs:
   mode:
     description: pip or image, whichever is in use
     value: ${{ steps.pick.outputs.mode }}
+  zim:
+    description: The path of the .zim written (with build true)
+    value: ${{ steps.build.outputs.zim }}
 
-# After this step, either way:
+# After this action, either way:
 #   D2Z_HOME               this repo (build.sh, package.py, relativize.mjs, examples/)
 #   D2Z_PYTHON             a python with zimscraperlib: run "$D2Z_PYTHON" "$D2Z_HOME/package.py"
 #   DOCUSAURUS2ZIM_PYTHON  the same, for build.sh --no-docker
@@ -28,7 +63,7 @@ runs:
     - id: py
       if: inputs.mode != 'image'
       continue-on-error: true
-      uses: actions/setup-python@v7
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
       with:
         python-version: '3.14'
 
@@ -80,3 +115,26 @@ runs:
         } >> "$GITHUB_ENV"
         echo "mode=$mode" >> "$GITHUB_OUTPUT"
         echo "docusaurus2zim: packaging with $mode ($py)"
+
+    # build.sh packages with the python picked above (--no-docker: in image mode that python is
+    # the image), and writes the book's path to this step's output.
+    - id: build
+      if: inputs.build == 'true'
+      shell: bash
+      working-directory: ${{ inputs.site-dir }}
+      env:
+        DOCUSAURUS2ZIM_CONFIG: ${{ inputs.config }}
+        ZIM_NAME: ${{ inputs.name }}
+        ZIM_TITLE: ${{ inputs.title }}
+        BASE_URL: ${{ inputs.base-url }}
+        OUT_DIR: ${{ inputs.out-dir }}
+        ZIM_DIR: ${{ inputs.zim-dir }}
+        HEAP: ${{ inputs.heap }}
+        SKIP_BUILD: ${{ inputs.skip-build }}
+      run: |
+        args=(--no-docker --out-dir "$OUT_DIR" --zim-dir "$ZIM_DIR" --heap "$HEAP")
+        if [ -n "$ZIM_NAME" ]; then args+=(--name "$ZIM_NAME"); fi
+        if [ -n "$ZIM_TITLE" ]; then args+=(--title "$ZIM_TITLE"); fi
+        if [ -n "$BASE_URL" ]; then args+=(--base-url "$BASE_URL"); fi
+        if [ "$SKIP_BUILD" = true ]; then args+=(--skip-build); fi
+        "$GITHUB_ACTION_PATH/build.sh" "${args[@]}"
