@@ -316,6 +316,16 @@ browser under `/wiki` on the Irate-Box hub. Releases follow semantic versioning:
 the action's inputs or outputs, or to the config's keys, that breaks a working setup is a new
 major version.
 
+## LLM/AI disclosure
+
+This was produced almost entirely using Claude Code. I (a human) have checked that it performs
+correctly and produces good outputs. It is what it is.
+
+## Acknowledgements
+
+I would like to thank the original Kiwix team for their efforts, both past and present.
+The project is an inspiration to all.
+
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
