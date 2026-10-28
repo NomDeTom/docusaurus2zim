@@ -321,6 +321,27 @@ major version.
 This was produced almost entirely using Claude Code. I (a human) have checked that it performs
 correctly and produces good outputs. It is what it is.
 
+The tool itself contains no generative AI. It calls no AI model or service, and nothing in a
+book it makes is generated: a book is the site's own build, packaged.
+
+## Privacy
+
+docusaurus2zim collects no data. It runs entirely in your workflow or on your machine, and
+sends nothing to its author or anyone else. It downloads only from PyPI, your system's
+Debian/Ubuntu mirrors, `ghcr.io` (the packaging image) and any hosts you list in
+`mirror_hosts`.
+
+## Support
+
+Questions and bugs: [open an issue](https://github.com/NomDeTom/docusaurus2zim/issues).
+A security problem: report it privately, as [SECURITY.md](SECURITY.md) describes.
+
+## Trademarks
+
+docusaurus2zim is not affiliated with or endorsed by Meta (Docusaurus), Kiwix or openZIM. Their
+names are used here only to say what the tool works with. Meshtastic® is a registered trademark
+of Meshtastic LLC; its documentation site is the example in `examples/meshtastic.json`.
+
 ## Acknowledgements
 
 I would like to thank the original Kiwix team for their efforts, both past and present.
@@ -329,3 +350,9 @@ The project is an inspiration to all.
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+The packaging image (`ghcr.io/nomdetom/docusaurus2zim`) also contains third-party software
+under its own licences: Debian's `python:3.14-slim` base with `libmagic1` and `libcairo2`, and
+the Python packages in [requirements.txt](requirements.txt), among them openZIM's
+zimscraperlib (GPL-3.0). The [Dockerfile](Dockerfile) says exactly what goes in, and each
+part's source is available from its upstream project.

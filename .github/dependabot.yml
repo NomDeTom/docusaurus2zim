@@ -1,0 +1,19 @@
+# Routine updates, weekly: the actions this repository's workflows and action.yml use, the pinned packaging
+# dependencies (requirements.txt), and the image's base (Dockerfile). Security updates come as well, at any time.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
