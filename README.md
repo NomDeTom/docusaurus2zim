@@ -8,93 +8,6 @@ React components. This packages that build as-is, rather than scraping the site 
 through a replacement UI. What it adds is the ZIM-specific knowledge the static build has no
 reason to have.
 
-## Why not `zimwriterfs`
-
-`zimwriterfs` packs a directory and, in its own README's words, does "nothing more, nothing
-less". Its only indexing control is all-or-nothing (`--withoutFTIndex`), and `getIndexData`
-appears nowhere in its sources — so libzim's default HTML indexer runs on every item. That means
-every page's chrome is indexed: on one real site, searching the word in the footer copyright
-matched **all 746 pages**.
-
-This uses [`zimscraperlib`](https://github.com/openzim/python-scraperlib) instead and attaches
-per-item index data, so only the text inside a chosen CSS selector is indexed. On that same site
-the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the term.
-
-## What it handles
-
-- **Relative paths, so a book works at any mount point.** A reader mounts a book under a URL
-  prefix that differs between Kiwix at a server's root, Kiwix under a prefix, and the desktop
-  and mobile readers. openZIM books cope by linking relatively, and so do these, which takes
-  more work for a Docusaurus site than for static HTML. See [The base URL](#the-base-url).
-- **Analytics removed.** Vercel, Google gtag, Google Analytics and Google Tag Manager plugins
-  are dropped from the build: they cannot reach anything offline and only leave 404s.
-- **Pages live at their route.** `page/index.html` is stored as the entry `page/`, with the
-  file name redirecting to it. The client router only knows the route: a redirect the other way
-  round is a 302 to a URL it cannot match, and the page hydrates into the site's own not-found.
-- **Both slash forms.** Raw HTML in MDX and in config strings bypasses `trailingSlash`, so pages
-  are also reachable without the trailing slash — and, in the other direction, `trailingSlash`
-  decorates *asset* links too, so `file.pdf/` redirects to `file.pdf`. A live site has a server
-  to paper over both; a ZIM does not.
-- **External images.** Assets served from another host are copied in and their URLs re-pointed,
-  including the bare directory prefix, because components build image URLs from it at runtime.
-- **Stray root-absolute assets.** Raw paths inside React components miss `baseUrl` and are
-  re-pointed.
-- **Absolute self-links.** Pages imported from other repos link back to the site by its full
-  URL. Those that resolve inside the build are made relative; the rest are listed, since a
-  self-link with no page behind it is stale on the live site too.
-- **Pruning and exclusion.** Unreferenced files under chosen prefixes are never added; glob
-  patterns drop anything else. Nothing is deleted from the build directory. A static image that
-  Docusaurus has already copied to `assets/` under a hashed name counts as unreferenced when its
-  only mention is in a page's raw source, so `img/` can be pruned without losing anything.
-- **Cover.** `zim-illustration.png` in the build directory if the site ships one; otherwise the
-  favicon the main page declares, rendered to 48x48 (SVG, PNG, ICO); otherwise a flat square.
-- **PDF full text**, via `zimscraperlib`'s pymupdf integration.
-- **Verification.** `--verify` serves the result and probes every internal reference on a sample
-  of pages, failing on any break.
-
-## Usage
-
-From the root of a Docusaurus site containing a `docusaurus2zim.json`, with the site's own
-dependencies installed and current (`pnpm install`, `npm ci` or `yarn`, whichever the site
-uses). A `node_modules` older than the site's `package.json` fails inside the Docusaurus
-build with a "Cannot find module" error for a plugin, which looks like a docusaurus2zim
-problem but is not.
-
-```sh
-docker build -t docusaurus2zim:latest /path/to/docusaurus2zim
-/path/to/docusaurus2zim/build.sh --verify
-```
-
-```
-build.sh                build and package
-build.sh --verify       also serve and probe every internal link on a sample of pages
-build.sh --skip-build   repackage an existing out-dir
-build.sh --serve        serve the result on :8081
-build.sh --no-docker    package with a local Python instead of the container
-build.sh --help         every option, with its current default
-```
-
-The other options are `--name`, `--title`, `--base-url`, `--out-dir`, `--zim-dir`,
-`--heap`, `--mirror-hosts`, `--asset-prefixes` and `--verify-ignore`. `--help` works
-anywhere, even outside a site repo.
-
-The config need not live in the site repo — point at one anywhere:
-
-```sh
-DOCUSAURUS2ZIM_CONFIG=/path/to/docusaurus2zim/examples/meshtastic.json \
-  /path/to/docusaurus2zim/build.sh --verify
-```
-
-The build goes to `build-zim/` and the book to `zim-out/<name>.zim`, both in the site repo.
-Add them to its `.gitignore`, or pass `--out-dir` and `--zim-dir` to put them elsewhere.
-
-| Environment variable | Default | Meaning |
-|---|---|---|
-| `DOCUSAURUS2ZIM_CONFIG` | `docusaurus2zim.json` | the site config to use |
-| `DOCUSAURUS2ZIM_IMAGE` | `docusaurus2zim:latest` | the packaging image |
-| `DOCUSAURUS2ZIM_PYTHON` | `python3` | the interpreter for `--no-docker` |
-| `ZIM_BUILD_HEAP` | `1800` | Node heap cap for the Docusaurus build, in MB (same as `--heap`) |
-
 ## GitHub Actions
 
 `action.yml` makes this a GitHub Action. With `build: true` it builds the site and packages
@@ -187,6 +100,93 @@ steps:
       - uses: NomDeTom/docusaurus2zim@v1
       - run: '"$D2Z_HOME/build.sh" --no-docker --zim-dir out'
 ```
+
+## Why not `zimwriterfs`
+
+`zimwriterfs` packs a directory and, in its own README's words, does "nothing more, nothing
+less". Its only indexing control is all-or-nothing (`--withoutFTIndex`), and `getIndexData`
+appears nowhere in its sources — so libzim's default HTML indexer runs on every item. That means
+every page's chrome is indexed: on one real site, searching the word in the footer copyright
+matched **all 746 pages**.
+
+This uses [`zimscraperlib`](https://github.com/openzim/python-scraperlib) instead and attaches
+per-item index data, so only the text inside a chosen CSS selector is indexed. On that same site
+the figure went from 746 to 7 — and the 7 are pages that genuinely discuss the term.
+
+## What it handles
+
+- **Relative paths, so a book works at any mount point.** A reader mounts a book under a URL
+  prefix that differs between Kiwix at a server's root, Kiwix under a prefix, and the desktop
+  and mobile readers. openZIM books cope by linking relatively, and so do these, which takes
+  more work for a Docusaurus site than for static HTML. See [The base URL](#the-base-url).
+- **Analytics removed.** Vercel, Google gtag, Google Analytics and Google Tag Manager plugins
+  are dropped from the build: they cannot reach anything offline and only leave 404s.
+- **Pages live at their route.** `page/index.html` is stored as the entry `page/`, with the
+  file name redirecting to it. The client router only knows the route: a redirect the other way
+  round is a 302 to a URL it cannot match, and the page hydrates into the site's own not-found.
+- **Both slash forms.** Raw HTML in MDX and in config strings bypasses `trailingSlash`, so pages
+  are also reachable without the trailing slash — and, in the other direction, `trailingSlash`
+  decorates *asset* links too, so `file.pdf/` redirects to `file.pdf`. A live site has a server
+  to paper over both; a ZIM does not.
+- **External images.** Assets served from another host are copied in and their URLs re-pointed,
+  including the bare directory prefix, because components build image URLs from it at runtime.
+- **Stray root-absolute assets.** Raw paths inside React components miss `baseUrl` and are
+  re-pointed.
+- **Absolute self-links.** Pages imported from other repos link back to the site by its full
+  URL. Those that resolve inside the build are made relative; the rest are listed, since a
+  self-link with no page behind it is stale on the live site too.
+- **Pruning and exclusion.** Unreferenced files under chosen prefixes are never added; glob
+  patterns drop anything else. Nothing is deleted from the build directory. A static image that
+  Docusaurus has already copied to `assets/` under a hashed name counts as unreferenced when its
+  only mention is in a page's raw source, so `img/` can be pruned without losing anything.
+- **Cover.** `zim-illustration.png` in the build directory if the site ships one; otherwise the
+  favicon the main page declares, rendered to 48x48 (SVG, PNG, ICO); otherwise a flat square.
+- **PDF full text**, via `zimscraperlib`'s pymupdf integration.
+- **Verification.** `--verify` serves the result and probes every internal reference on a sample
+  of pages, failing on any break.
+
+## Usage
+
+From the root of a Docusaurus site containing a `docusaurus2zim.json`, with the site's own
+dependencies installed and current (`pnpm install`, `npm ci` or `yarn`, whichever the site
+uses). A `node_modules` older than the site's `package.json` fails inside the Docusaurus
+build with a "Cannot find module" error for a plugin, which looks like a docusaurus2zim
+problem but is not.
+
+```sh
+docker build -t docusaurus2zim:latest /path/to/docusaurus2zim
+/path/to/docusaurus2zim/build.sh --verify
+```
+
+```
+build.sh                build and package
+build.sh --verify       also serve and probe every internal link on a sample of pages
+build.sh --skip-build   repackage an existing out-dir
+build.sh --serve        serve the result on :8081
+build.sh --no-docker    package with a local Python instead of the container
+build.sh --help         every option, with its current default
+```
+
+The other options are `--name`, `--title`, `--base-url`, `--out-dir`, `--zim-dir`,
+`--heap`, `--mirror-hosts`, `--asset-prefixes` and `--verify-ignore`. `--help` works
+anywhere, even outside a site repo.
+
+The config need not live in the site repo — point at one anywhere:
+
+```sh
+DOCUSAURUS2ZIM_CONFIG=/path/to/docusaurus2zim/examples/meshtastic.json \
+  /path/to/docusaurus2zim/build.sh --verify
+```
+
+The build goes to `build-zim/` and the book to `zim-out/<name>.zim`, both in the site repo.
+Add them to its `.gitignore`, or pass `--out-dir` and `--zim-dir` to put them elsewhere.
+
+| Environment variable | Default | Meaning |
+|---|---|---|
+| `DOCUSAURUS2ZIM_CONFIG` | `docusaurus2zim.json` | the site config to use |
+| `DOCUSAURUS2ZIM_IMAGE` | `docusaurus2zim:latest` | the packaging image |
+| `DOCUSAURUS2ZIM_PYTHON` | `python3` | the interpreter for `--no-docker` |
+| `ZIM_BUILD_HEAP` | `1800` | Node heap cap for the Docusaurus build, in MB (same as `--heap`) |
 
 ## The base URL
 
