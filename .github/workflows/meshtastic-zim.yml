@@ -1,0 +1,74 @@
+name: Meshtastic docs ZIM
+
+# Builds the Meshtastic documentation site into a Kiwix ZIM with this repo's action and
+# examples/meshtastic.json, for a look before it goes anywhere else. Pushing to this
+# branch runs it; the .zim is kept as an artifact. To build another branch or version of
+# the docs, change MESHTASTIC_REF (workflow_dispatch works once this file is on main).
+#
+# Note: this repo's CI (ci.yml) runs on push to every branch, so a push here also
+# builds and publishes the packaging image and self-tests the action.
+on:
+  push:
+    branches: [meshtastic-zim]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meshtastic-zim
+  cancel-in-progress: true
+
+env:
+  MESHTASTIC_REPOSITORY: meshtastic/meshtastic
+  MESHTASTIC_REF: master
+
+jobs:
+  zim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: This repo, for the action and its example config
+        uses: actions/checkout@v7
+
+      - name: The docs site at ${{ env.MESHTASTIC_REF }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.MESHTASTIC_REPOSITORY }}
+          ref: ${{ env.MESHTASTIC_REF }}
+          path: site
+          submodules: true
+
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: site/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: site/.nvmrc
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      - name: Install the site's dependencies
+        working-directory: site
+        run: pnpm install
+
+      - name: docusaurus2zim (pip, else its packaging image)
+        id: d2z
+        uses: ./
+        with:
+          build: 'true'
+          site-dir: site
+          config: ../examples/meshtastic.json
+
+      - name: The book is there
+        run: |
+          test -s "${{ steps.d2z.outputs.zim }}"
+          echo "${{ steps.d2z.outputs.zim }}: $(du -h "${{ steps.d2z.outputs.zim }}" | cut -f1), with ${{ steps.d2z.outputs.mode }}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: meshtastic-docs-zim
+          path: ${{ steps.d2z.outputs.zim }}
+          compression-level: 0
+          if-no-files-found: error
