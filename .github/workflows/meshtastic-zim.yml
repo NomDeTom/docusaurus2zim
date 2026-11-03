@@ -9,7 +9,7 @@ name: Meshtastic docs ZIM
 # builds and publishes the packaging image and self-tests the action.
 on:
   push:
-    branches: [meshtastic-zim]
+    branches: [meshtastic-zim-led-test]
   workflow_dispatch:
 
 permissions:
@@ -21,7 +21,7 @@ concurrency:
 
 env:
   MESHTASTIC_REPOSITORY: meshtastic/meshtastic
-  MESHTASTIC_REF: master
+  MESHTASTIC_REF: glossary-term-style
 
 jobs:
   zim:
