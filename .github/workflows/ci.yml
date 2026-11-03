@@ -56,6 +56,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: The remark route helper
+        run: node tests/remark-route.test.cjs
+
   selftest:
     needs: image
     runs-on: ubuntu-latest
